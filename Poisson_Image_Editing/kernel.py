@@ -4,10 +4,12 @@ from scipy.sparse import lil_matrix, linalg
 
 
 class Poisson:
+    NORMAL_CLONE = 1
+    MIXED_CLONE = 2
     # 用户接口
     # src, dst大小不必相同, 通道数必须相同, mask对应src遮罩, point为dst对应拷贝位置的中心点
     @classmethod
-    def seamlessClone(cls, src, dst, mask, point, flags=None):
+    def seamlessClone(cls, src, dst, mask, point, flag=NORMAL_CLONE):
         laplacian = cv.Laplacian(np.float64(src), -1, ksize=1)
         inner = np.nonzero(mask)
         # 取出蒙版指定的位置
@@ -37,9 +39,65 @@ class Poisson:
         reMask[xbegin:xend, ybegin:yend] = cutMask
         reSrc[xbegin:xend, ybegin:yend] = cutSrc
         reLap[xbegin:xend, ybegin:yend] = cutLap
+        if flag == cls.MIXED_CLONE:
+            kernels = [np.array([[0, -1, 1]]), np.array([[1, -1, 0]]),
+                       np.array([[0], [-1], [1]]), np.array([[1], [-1], [0]])]
+            grads = [(cv.filter2D(np.float64(reSrc), -1, kernels[i]),
+                      cv.filter2D(np.float64(dst), -1, kernels[i])) for i in range(4)]
+            grads = [np.where(np.abs(srcGrad) > np.abs(
+                dstGrad), srcGrad, dstGrad) for (srcGrad, dstGrad) in grads]
+            reLap = np.sum(grads, axis=0)
         # 逐通道求解
         ret = [cls._solve(s, d, reMask, l) for s, d, l in zip(
             cv.split(reSrc), cv.split(dst), cv.split(reLap))]
+        retImg = cv.merge(ret)
+        return retImg
+
+    @classmethod
+    def textureFlattening(cls, src, mask, low_thresh, high_thresh):
+        kernels = [np.array([[0, -1, 1]]), np.array([[1, -1, 0]]),
+                    np.array([[0], [-1], [1]]), np.array([[1], [-1], [0]])]
+        kernelsOfEdge = [np.array([[0, 1, 1]]), np.array([[1, 1, 0]]),
+                    np.array([[0], [1], [1]]), np.array([[1], [1], [0]])]
+        canny = cv.Canny(src, low_thresh, high_thresh)
+        edges = [cv.filter2D(canny, -1, kernelsOfEdge[i]) for i in range(4)]
+        grads = [cv.filter2D(np.float64(src), -1, kernels[i]) for i in range(4)]
+        for i in range(4):
+            grads[i][edges[i] == 0] = 0
+        laplacian = np.sum(grads, axis=0)
+        ret = [cls._solve(s, d, mask, l) for s, d, l in zip(
+            cv.split(src), cv.split(src), cv.split(laplacian))]
+        retImg = cv.merge(ret)
+        return retImg
+
+    @classmethod
+    def illuminationChange(cls, src, mask, alpha=0.2, beta=0.4):
+        laplacian = cv.Laplacian(np.float64(src), -1, ksize=1)
+        laplacian[mask == 0] = 0
+        laplacian = laplacian * (alpha**beta * np.log(np.linalg.norm(laplacian))**(-beta))
+        ret = [cls._solve(s, d, mask, l) for s, d, l in zip(
+            cv.split(src), cv.split(src), cv.split(laplacian))]
+        retImg = cv.merge(ret)
+        return retImg
+
+    # 要求输入形式为RGB
+    @classmethod
+    def colorChange(cls, src, mask, red_mul, green_mul, blue_mul):
+        r, g, b = cv.split(src)
+        newSrc = cv.merge((r*red_mul, g*green_mul, b*blue_mul))
+        laplacian = cv.Laplacian(np.float64(newSrc), -1, ksize=1)
+        ret = [cls._solve(s, d, mask, l) for s, d, l in zip(
+            cv.split(newSrc), cv.split(src), cv.split(laplacian))]
+        retImg = cv.merge(ret)
+        return retImg
+
+    @classmethod
+    def deColor(cls, src, mask):
+        laplacian = cv.Laplacian(np.float64(src), -1, ksize=1)
+        newSrc = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
+        newSrc = cv.cvtColor(newSrc, cv.COLOR_GRAY2BGR)
+        ret = [cls._solve(s, d, mask, l) for s, d, l in zip(
+            cv.split(src), cv.split(newSrc), cv.split(laplacian))]
         retImg = cv.merge(ret)
         return retImg
 

@@ -121,3 +121,14 @@ class PreProcessing:
         cv.waitKey(0)
         cv.destroyAllWindows()
         return self.selectedMask, self.selectedPoint
+
+    # 仅选择源图像区域
+    def selectSrc(self, src):
+        # 选择蒙版
+        cv.namedWindow('select_mask')
+        cv.setMouseCallback('select_mask', lambda event, x, y, flags,
+                            param: self.__onMouseAction1(event, x, y, flags, param), src)
+        cv.imshow('select_mask', src)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+        return self.selectedMask
