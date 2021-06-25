@@ -38,7 +38,9 @@
 
 参数形式与opencv相同，但参数的效果可能与opencv有所不同。对目标区域梯度场的作用如公式所示：
 
-$$\mathbf{v} = \alpha^\beta *\log(|\nabla f^*|^{-\beta})*\nabla f^*$$
+$$
+\mathbf{v} = \alpha^\beta *\log(|\nabla f^*|^{-\beta})*\nabla f^*
+$$
 
 `colorChange`方法：色彩调整
 
